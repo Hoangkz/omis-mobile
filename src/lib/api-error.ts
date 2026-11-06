@@ -5,6 +5,7 @@ const MESSAGES: Record<string, string> = {
   AUTH_INVALID_CREDENTIALS: 'Sai tên đăng nhập hoặc mật khẩu',
   AUTH_INVALID_ACCESS_TOKEN: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
   AUTH_INVALID_REFRESH_TOKEN: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+  AUTH_INVALID_LOGIN_TOKEN: 'Mã QR đã hết hạn hoặc đã được sử dụng. Vui lòng tạo mã mới trên máy tính.',
   AUTH_TENANT_MISMATCH: 'Tài khoản không thuộc doanh nghiệp này. Vui lòng quét lại mã QR.',
   AUTH_USER_NOT_FOUND: 'Tài khoản không còn tồn tại',
   LICENSE_TENANT_UNKNOWN: 'Mã doanh nghiệp không hợp lệ. Vui lòng quét lại mã QR.',

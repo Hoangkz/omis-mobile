@@ -5,7 +5,8 @@ import { mapRole } from '@/src/features/omis/types';
 import api from '@/src/lib/api';
 import { getApiErrorMessage } from '@/src/lib/api-error';
 import { tokenStorage } from '@/src/lib/secure-storage';
-import { parseTenantQr } from '@/src/lib/tenant-storage';
+import { toast } from '@/src/lib/toast';
+import { parseLoginQr, tenantFromJwt } from '@/src/lib/qr-login';
 import { useAuthStore, type AuthUser } from '@/src/shared/store/use-auth-store';
 import { useTenantStore } from '@/src/shared/store/use-tenant-store';
 import { Factory, QrCode } from 'lucide-react-native';
@@ -36,7 +37,6 @@ export default function LoginScreen() {
   const tenantId = useTenantStore((s) => s.tenantId);
   const setTenantId = useTenantStore((s) => s.setTenantId);
   const [scanning, setScanning] = useState(false);
-  const [scanError, setScanError] = useState('');
 
   const login = async () => {
     // Chưa có tenantId → bắt buộc quét QR trước khi đăng nhập
@@ -53,27 +53,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const { data: tokens } = await api.post<TokenPair>('/auth/login', { userName: userName.trim(), password });
-      // /auth/me cần Bearer → lưu token trước
-      await tokenStorage.setTokens(tokens.accessToken, tokens.refreshToken);
-      let me: MeResponse;
-      try {
-        me = (await api.get<MeResponse>('/auth/me')).data;
-      } catch (e) {
-        await tokenStorage.clear();
-        throw e;
-      }
-
-      const role = mapRole(me.role);
-      const user: AuthUser = {
-        id: me.id,
-        userName: me.userName,
-        name: me.fullName ?? me.userName,
-        email: me.email,
-        role,
-        apiRole: me.role,
-        saleId: role === 'sale' ? me.id : undefined,
-      };
-      await signIn({ user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
+      await completeLogin(tokens);
     } catch (e) {
       setError(getApiErrorMessage(e, 'Đăng nhập thất bại. Vui lòng thử lại.'));
     } finally {
@@ -81,17 +61,66 @@ export default function LoginScreen() {
     }
   };
 
+  /** Lưu token → lấy thông tin user → vào app. Dùng chung cho đăng nhập thường và QR. */
+  const completeLogin = async (tokens: TokenPair) => {
+    // /auth/me cần Bearer → lưu token trước
+    await tokenStorage.setTokens(tokens.accessToken, tokens.refreshToken);
+    let me: MeResponse;
+    try {
+      me = (await api.get<MeResponse>('/auth/me')).data;
+    } catch (e) {
+      await tokenStorage.clear();
+      throw e;
+    }
+
+    const role = mapRole(me.role);
+    const user: AuthUser = {
+      id: me.id,
+      userName: me.userName,
+      name: me.fullName ?? me.userName,
+      email: me.email,
+      role,
+      apiRole: me.role,
+      saleId: role === 'sale' ? me.id : undefined,
+    };
+    await signIn({ user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
+  };
+
+  /** Đăng nhập nhanh: đổi token QR (15 phút, dùng 1 lần) lấy phiên đăng nhập. */
   const onScanned = async (raw: string) => {
-    const parsed = parseTenantQr(raw);
+    if (loading) return; // đang đổi token → bỏ qua lần quét lặp (token chỉ dùng 1 lần)
+    // Mọi lỗi: đóng màn quét rồi hiện toast. Không báo lỗi trong modal vì Modal toàn màn hình
+    // che mất toast, còn dòng lỗi trong modal thì mất ngay khi modal đóng → người dùng không kịp đọc.
+    const fail = (message: string) => {
+      setScanning(false);
+      toast.error(message, false);
+    };
+    const parsed = parseLoginQr(raw);
     if (!parsed) {
-      setScanError('Mã QR không hợp lệ');
+      fail('Mã QR không hợp lệ. Vui lòng quét mã đăng nhập do hệ thống tạo.');
       return;
     }
-    // Mỗi lần quét hợp lệ sẽ cập nhật lại tenantId
-    await setTenantId(parsed.tenantId);
-    setScanning(false);
-    setScanError('');
     setError('');
+    setLoading(true);
+    try {
+      const { data: tokens } = await api.post<TokenPair & { tenantId?: string }>('/auth/login-by-token', { token: parsed.token });
+      // Response sai cấu trúc (VD: server cũ, hoặc trỏ nhầm môi trường) → báo rõ thay vì để
+      // SecureStore ném "Invalid value provided to SecureStore" khi ghi giá trị undefined.
+      if (typeof tokens?.accessToken !== 'string' || typeof tokens?.refreshToken !== 'string') {
+        console.warn('[login-by-token] response không có token', Object.keys(tokens ?? {}));
+        fail('Máy chủ trả về dữ liệu đăng nhập không hợp lệ. Vui lòng thử lại hoặc liên hệ quản trị viên.');
+        return;
+      }
+      // BE tự suy ra tenant: ưu tiên field trong response, không có thì đọc từ JWT
+      const tenant = tokens.tenantId ?? tenantFromJwt(tokens.accessToken);
+      if (typeof tenant === 'string' && tenant) await setTenantId(tenant);
+      setScanning(false);
+      await completeLogin(tokens);
+    } catch (e) {
+      fail(getApiErrorMessage(e, 'Đăng nhập bằng mã QR thất bại. Vui lòng thử lại.'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -139,10 +168,7 @@ export default function LoginScreen() {
             tone="ghost"
             label="Quét QR đăng nhập nhanh"
             icon={<QrCode size={20} color={C.primary} />}
-            onPress={() => {
-              setScanError('');
-              setScanning(true);
-            }}
+            onPress={() => setScanning(true)}
           />
           <Txt size={13} color={C.primary} align="center" style={{ marginTop: 4 }}>
             Quên mật khẩu
@@ -156,7 +182,7 @@ export default function LoginScreen() {
         </View>
       </ScrollView>
 
-      <QrScannerModal visible={scanning} error={scanError} onScanned={onScanned} onClose={() => setScanning(false)} />
+      <QrScannerModal visible={scanning} onScanned={onScanned} onClose={() => setScanning(false)} />
     </KeyboardAvoidingView>
   );
 }

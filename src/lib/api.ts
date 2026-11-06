@@ -42,10 +42,12 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
 
   // Mọi API đều bắt buộc có tenantId (lấy từ QR đăng nhập)
   const tenantId = useTenantStore.getState().tenantId;
-  if (!tenantId) {
+  if (tenantId) {
+    config.headers['x-tenant-id'] = tenantId;
+  } else if (!/\/auth\/login-by-token/.test(config.url ?? '')) {
+    // login-by-token: BE tự suy ra tenant từ token nên không cần header
     return Promise.reject(new Error('Chưa có tenantId. Vui lòng quét mã QR để đăng nhập.'));
   }
-  config.headers['x-tenant-id'] = tenantId;
   return config;
 });
 
@@ -53,6 +55,21 @@ api.interceptors.response.use(
   (response) => {
     // BE trả { message, status, data } → bóc lấy `data` cho code gọi API
     const body = response.data;
+    // BE trả LỖI cũng với HTTP 200, kèm { status: 401, message: 'KEY', errors } → axios tưởng thành công.
+    // Chuyển thành lỗi thật (response.status = body.status) để mọi chỗ xử lý lỗi/401-refresh phía dưới chạy đúng.
+    if (body && typeof body === 'object' && typeof body.status === 'number' && body.status !== 200) {
+      response.status = body.status;
+      return Promise.reject(
+        new AxiosError(
+          typeof body.message === 'string' ? body.message : 'Request failed',
+          AxiosError.ERR_BAD_RESPONSE,
+          response.config,
+          response.request,
+          response,
+        ),
+      );
+    }
+    // BE trả { message, status, data } → bóc lấy `data` cho code gọi API
     if (body && typeof body === 'object' && 'status' in body && 'data' in body) {
       response.data = body.data;
     }
