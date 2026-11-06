@@ -11,12 +11,12 @@
       "distribution": "store",
       "channel": "production",
       "ios": { "autoIncrement": true },
-      "env": { "APP_VARIANT": "production", "NPM_CONFIG_LEGACY_PEER_DEPS": "true" }
+      "env": { "APP_VARIANT": "production", "NPM_CONFIG_LEGACY_PEER_DEPS": "true", "EXPO_PUBLIC_API_URL_PRODUCTION": "https://api.humanscale.app", "APP_VERSION": "1.0.0" }
     },
     "preview": {
       "distribution": "internal",
       "android": { "buildType": "apk" },
-      "env": { "APP_VARIANT": "production", "NPM_CONFIG_LEGACY_PEER_DEPS": "true" }
+      "env": { "APP_VARIANT": "production", "NPM_CONFIG_LEGACY_PEER_DEPS": "true", "EXPO_PUBLIC_API_URL_PRODUCTION": "https://api.humanscale.app", "APP_VERSION": "1.0.0" }
     }
   },
   "submit": { "production": {} }
