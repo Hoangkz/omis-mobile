@@ -11,7 +11,11 @@
     "lint": "expo lint",
     "lint:fix": "expo lint --fix",
     "prepare": "husky || true",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:apk": "eas build -p android --profile preview",
+    "build:apk:local": "eas build -p android --profile preview --local",
+    "build:aab": "eas build -p android --profile production",
+    "build:apk:gradle": "expo prebuild -p android && cd android && gradlew assembleRelease"
   },
   "dependencies": {
     "@dev-plugins/react-navigation": "^0.4.0",
