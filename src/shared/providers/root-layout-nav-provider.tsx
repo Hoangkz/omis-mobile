@@ -12,7 +12,8 @@ export default function RootLayoutNavProvider() {
 
   /* Navigation devtools */
   const navigationRef = useNavigationContainerRef();
-  useReactNavigationDevTools(navigationRef);
+  // kiểu ref của thư viện devtools chưa khớp với react-navigation mới
+  useReactNavigationDevTools(navigationRef as never);
 
   return (
     <>

@@ -49,7 +49,7 @@ function FormInputInner<
     required,
     ...inputProps
   }: FormInputProps<TFieldValues, TName>,
-  ref: React.Ref<TextInput>,
+  ref: React.Ref<React.ComponentRef<typeof TextInput>>,
 ) {
   const { t } = useTranslation();
 
@@ -160,5 +160,5 @@ export const FormInput = React.forwardRef(FormInputInner) as <
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
 >(
-  props: FormInputProps<TFieldValues, TName> & { ref?: React.Ref<TextInput> },
+  props: FormInputProps<TFieldValues, TName> & { ref?: React.Ref<React.ComponentRef<typeof TextInput>> },
 ) => React.ReactElement;

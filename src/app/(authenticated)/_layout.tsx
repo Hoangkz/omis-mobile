@@ -1,6 +1,7 @@
 import { C } from '@/src/features/omis/theme';
 import { useAuthStore } from '@/src/shared/store/use-auth-store';
 import { Redirect, Tabs } from 'expo-router';
+import type { ColorValue } from 'react-native';
 import {
   Calculator,
   ChartColumn,
@@ -13,8 +14,8 @@ import {
 } from 'lucide-react-native';
 
 const icon = (Icon: LucideIcon) => {
-  const TabIcon = ({ color, focused }: { color: string; focused: boolean }) => (
-    <Icon size={24} color={color} strokeWidth={focused ? 2.4 : 1.8} />
+  const TabIcon = ({ color, focused }: { color: ColorValue; focused: boolean }) => (
+    <Icon size={24} color={color as string} strokeWidth={focused ? 2.4 : 1.8} />
   );
   return TabIcon;
 };

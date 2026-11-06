@@ -2,6 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import Constants from 'expo-constants';
 import { TIMEOUT } from './constant';
 import { tokenStorage } from './secure-storage';
+import { useTenantStore } from '../shared/store/use-tenant-store';
 import { toast } from './toast';
 
 const api = axios.create({
@@ -36,6 +37,13 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   const token = await tokenStorage.getAccessToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   config.headers['Accept-Language'] = 'vi';
+
+  // Mọi API đều bắt buộc có tenantId (lấy từ QR đăng nhập)
+  const tenantId = useTenantStore.getState().tenantId;
+  if (!tenantId) {
+    return Promise.reject(new Error('Chưa có tenantId. Vui lòng quét mã QR để đăng nhập.'));
+  }
+  config.headers['X-Tenant-Id'] = tenantId;
   return config;
 });
 

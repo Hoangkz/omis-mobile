@@ -23,7 +23,7 @@ function FormTextareaInner<
     TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>
 >(
     { control, name, label, error, className, showCharacterCount = false, maxLength, ...textareaProps }: FormTextareaProps<TFieldValues, TName>,
-    ref: React.Ref<TextInput>
+    ref: React.Ref<React.ComponentRef<typeof TextInput>>
 ) {
     return (
         <View className="gap-1">
@@ -70,5 +70,5 @@ export const FormTextarea = React.forwardRef(FormTextareaInner) as <
     TFieldValues extends FieldValues = FieldValues,
     TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>
 >(
-    props: FormTextareaProps<TFieldValues, TName> & { ref?: React.Ref<TextInput> }
+    props: FormTextareaProps<TFieldValues, TName> & { ref?: React.Ref<React.ComponentRef<typeof TextInput>> }
 ) => React.ReactElement;

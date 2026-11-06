@@ -20,7 +20,7 @@ export default function OtpCodeInput({
     className,
     autoFocus = true,
 }: OtpCodeInputProps) {
-    const hiddenInputRef = useRef<TextInput>(null);
+    const hiddenInputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
     const [isFocused, setIsFocused] = useState(false);
 
     // Auto focus on mount

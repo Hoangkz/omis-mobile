@@ -1,13 +1,15 @@
 import { useAuthStore } from '@/src/shared/store/use-auth-store';
+import { useTenantStore } from '@/src/shared/store/use-tenant-store';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 /** Loads fonts and restores the session, then hides the splash screen. */
 export const useBootstrapApp = () => {
-  const [isReady, setIsReady] = useState(false);
   const hydrate = useAuthStore((s) => s.hydrate);
   const isAuthLoaded = useAuthStore((s) => s.isLoaded);
+  const hydrateTenant = useTenantStore((s) => s.hydrate);
+  const isTenantLoaded = useTenantStore((s) => s.isLoaded);
 
   const [fontsLoaded, fontError] = useFonts({
     'Outfit-Thin': require('../../../../assets/fonts/Outfit-Thin.ttf'),
@@ -23,14 +25,14 @@ export const useBootstrapApp = () => {
 
   useEffect(() => {
     hydrate();
-  }, [hydrate]);
+    hydrateTenant();
+  }, [hydrate, hydrateTenant]);
+
+  const isReady = (fontsLoaded || !!fontError) && isAuthLoaded && isTenantLoaded;
 
   useEffect(() => {
-    if ((fontsLoaded || fontError) && isAuthLoaded) {
-      SplashScreen.hideAsync();
-      setIsReady(true);
-    }
-  }, [fontsLoaded, fontError, isAuthLoaded]);
+    if (isReady) SplashScreen.hideAsync();
+  }, [isReady]);
 
   return { isReady };
 };

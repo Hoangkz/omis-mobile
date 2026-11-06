@@ -1,8 +1,11 @@
 import { Btn, Field, Txt } from '@/src/features/omis/components';
 import { SALES } from '@/src/features/omis/mock-data';
+import { QrScannerModal } from '@/src/features/omis/qr-scanner';
 import { C } from '@/src/features/omis/theme';
+import { parseTenantQr } from '@/src/lib/tenant-storage';
 import { useAuthStore } from '@/src/shared/store/use-auth-store';
-import { Factory } from 'lucide-react-native';
+import { useTenantStore } from '@/src/shared/store/use-tenant-store';
+import { Factory, QrCode } from 'lucide-react-native';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +33,13 @@ export default function LoginScreen() {
   const [pass, setPass] = useState('');
   const [error, setError] = useState('');
 
+  const tenantId = useTenantStore((s) => s.tenantId);
+  const setTenantId = useTenantStore((s) => s.setTenantId);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState('');
+
+  const signInWith = (acc: (typeof MOCK_ACCOUNTS)[number]) => signIn({ user: acc.user, accessToken: acc.token });
+
   const login = (u: string, p: string) => {
     const acc = MOCK_ACCOUNTS.find((x) => x.username === u.trim().toLowerCase() && x.password === p);
     if (!acc) {
@@ -37,7 +47,35 @@ export default function LoginScreen() {
       return;
     }
     setError('');
-    signIn({ user: acc.user, accessToken: acc.token });
+    signInWith(acc);
+  };
+
+  const onPressLogin = () => {
+    // Chưa có tenantId → bắt buộc quét QR trước khi đăng nhập
+    if (!tenantId) {
+      setError('Vui lòng quét mã QR bên dưới để đăng nhập.');
+      return;
+    }
+    login(user, pass);
+  };
+
+  const onScanned = async (raw: string) => {
+    const parsed = parseTenantQr(raw);
+    if (!parsed) {
+      setScanError('Mã QR không hợp lệ');
+      return;
+    }
+    await setTenantId(parsed.tenantId);
+    setScanning(false);
+    setScanError('');
+    setError('');
+
+    // QR kèm role → đăng nhập nhanh luôn (mock)
+    const quick = parsed.role && MOCK_ACCOUNTS.find((a) => a.user.role === parsed.role);
+    if (quick) {
+      signInWith(quick);
+      return;
+    }
   };
 
   return (
@@ -72,7 +110,29 @@ export default function LoginScreen() {
               {error}
             </Txt>
           ) : null}
-          <Btn label="Đăng nhập" onPress={() => login(user, pass)} style={{ marginTop: 6 }} />
+          <Btn label="Đăng nhập" onPress={onPressLogin} style={{ marginTop: 6 }} />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: C.line }} />
+            <Txt size={12} color={C.sub}>
+              hoặc
+            </Txt>
+            <View style={{ flex: 1, height: 1, backgroundColor: C.line }} />
+          </View>
+          <Btn
+            tone="ghost"
+            label="Quét QR đăng nhập nhanh"
+            icon={<QrCode size={20} color={C.primary} />}
+            onPress={() => {
+              setScanError('');
+              setScanning(true);
+            }}
+          />
+          {tenantId ? (
+            <Txt size={11} color={C.sub} align="center">
+              Doanh nghiệp: <Txt size={11} weight="700" color={C.text}>{tenantId}</Txt>
+            </Txt>
+          ) : null}
           <Txt size={13} color={C.primary} align="center" style={{ marginTop: 4 }}>
             Quên mật khẩu
           </Txt>
@@ -84,6 +144,8 @@ export default function LoginScreen() {
           </Txt>
         </View>
       </ScrollView>
+
+      <QrScannerModal visible={scanning} error={scanError} onScanned={onScanned} onClose={() => setScanning(false)} />
     </KeyboardAvoidingView>
   );
 }

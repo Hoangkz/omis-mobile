@@ -510,29 +510,29 @@ export function Donut({
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   const total = parts.reduce((s, p) => s + p.value, 0) || 1;
-  let offset = 0;
+  // độ dài & điểm bắt đầu của từng cung (tính trước, không gán lại biến khi render)
+  const arcs = parts.map((p, i) => ({
+    ...p,
+    len: (p.value / total) * circ,
+    start: (parts.slice(0, i).reduce((s, q) => s + q.value, 0) / total) * circ,
+  }));
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
         <Circle cx={size / 2} cy={size / 2} r={r} stroke={C.line} strokeWidth={stroke} fill="none" />
-        {parts.map((p, i) => {
-          const len = (p.value / total) * circ;
-          const el = (
-            <Circle
-              key={i}
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              stroke={p.color}
-              strokeWidth={stroke}
-              fill="none"
-              strokeDasharray={`${len} ${circ - len}`}
-              strokeDashoffset={-offset}
-            />
-          );
-          offset += len;
-          return el;
-        })}
+        {arcs.map((a, i) => (
+          <Circle
+            key={i}
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={a.color}
+            strokeWidth={stroke}
+            fill="none"
+            strokeDasharray={`${a.len} ${circ - a.len}`}
+            strokeDashoffset={-a.start}
+          />
+        ))}
       </Svg>
       <View style={{ position: 'absolute', alignItems: 'center' }}>
         <Txt size={22} weight="800">
