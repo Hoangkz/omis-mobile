@@ -1,0 +1,68 @@
+{
+  "common": {
+    "continue": "Tiếp tục",
+    "submit": "Gửi",
+    "cancel": "Hủy",
+    "save": "Lưu",
+    "delete": "Xóa",
+    "edit": "Sửa",
+    "back": "Quay lại",
+    "next": "Tiếp theo",
+    "done": "Xong",
+    "loading": "Đang tải...",
+    "error": "Lỗi",
+    "success": "Thành công",
+    "confirm": "Xác nhận",
+    "close": "Đóng",
+    "search": "Tìm kiếm",
+    "retry": "Thử lại"
+  },
+  "toast": {
+    "success": "Thành công",
+    "error": "Lỗi",
+    "info": "Thông tin",
+    "notification": "Thông báo"
+  },
+  "errors": {
+    "noInternet": "Không có kết nối Internet",
+    "sessionExpired": "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+    "unknown": "Đã có lỗi xảy ra"
+  },
+  "settings": {
+    "title": "Cài đặt",
+    "logout": "Đăng xuất"
+  },
+  "accessibility": {
+    "showPassword": "Hiện mật khẩu",
+    "hidePassword": "Ẩn mật khẩu",
+    "passwordVisibilityHint": "Bật/tắt hiển thị mật khẩu",
+    "turnOn": "Bật",
+    "turnOff": "Tắt"
+  },
+  "validation": {
+    "required": "Trường này là bắt buộc",
+    "email": "Vui lòng nhập email hợp lệ",
+    "minLength": "Tối thiểu {{min}} ký tự",
+    "maxLength": "Tối đa {{max}} ký tự",
+    "minValue": "Tối thiểu là {{min}}",
+    "maxValue": "Tối đa là {{max}}",
+    "minDate": "Ngày phải từ {{date}} trở đi",
+    "maxDate": "Ngày phải trước hoặc bằng {{date}}",
+    "afterDate": "Ngày phải sau {{date}}",
+    "beforeDate": "Ngày phải trước {{date}}",
+    "endDateAfterStartDate": "Ngày kết thúc phải sau ngày bắt đầu",
+    "passwordMatch": "Mật khẩu không khớp",
+    "phoneNumber": "Vui lòng nhập số điện thoại hợp lệ",
+    "languagesMustDiffer": "Ngôn ngữ nguồn và đích phải khác nhau",
+    "emailMustBeDifferent": "Email liên hệ phải khác email chủ nhà",
+    "password": {
+      "minLength": "Ít nhất 8 ký tự",
+      "lowercase": "Một chữ cái thường",
+      "uppercase": "Một chữ cái hoa",
+      "number": "Một chữ số",
+      "special": "Một ký tự đặc biệt (@$!%*?&-+=#.)",
+      "allowedChars": "Chỉ dùng ký tự cho phép (A-Z, a-z, 0-9, @$!%*?&-+=#.())"
+    },
+    "invalidImageFormat": "Tải ảnh thất bại. Vui lòng thử lại."
+  }
+}

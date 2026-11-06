@@ -1,0 +1,23 @@
+{
+  "cli": { "version": ">= 13.2.0", "appVersionSource": "remote" },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": { "APP_VARIANT": "development", "NPM_CONFIG_LEGACY_PEER_DEPS": "true" }
+    },
+    "staging": { "distribution": "internal", "env": { "APP_VARIANT": "staging" } },
+    "production": {
+      "distribution": "store",
+      "channel": "production",
+      "ios": { "autoIncrement": true },
+      "env": { "APP_VARIANT": "production", "NPM_CONFIG_LEGACY_PEER_DEPS": "true" }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "env": { "APP_VARIANT": "production", "NPM_CONFIG_LEGACY_PEER_DEPS": "true" }
+    }
+  },
+  "submit": { "production": {} }
+}
