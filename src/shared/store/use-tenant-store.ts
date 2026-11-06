@@ -15,7 +15,8 @@ export const useTenantStore = create<TenantState>((set) => ({
   isLoaded: false,
 
   hydrate: async () => {
-    const tenantId = await tenantStorage.get();
+    // Ưu tiên tenant đã quét QR; chưa có thì lấy từ env (chỉ để test khi chưa có QR)
+    const tenantId = (await tenantStorage.get()) || process.env.EXPO_PUBLIC_DEFAULT_TENANT_ID || null;
     set({ tenantId, isLoaded: true });
   },
 

@@ -1,72 +1,116 @@
-import { Card, CardTitle, Legend, Picker, Row, Screen, StackedRows } from '@/src/features/omis/components';
-import { costByMonth, MONTHS, PRODUCTS } from '@/src/features/omis/mock-data';
+import { first, useCustomerGrossProfit, useMonthlyExpenses } from '@/src/features/omis/api';
+import { Card, CardTitle, ColumnChart, HBars, Legend, Picker, QueryState, Row, Screen, StackedRows } from '@/src/features/omis/components';
 import { C } from '@/src/features/omis/theme';
 import { fmtShort, fmtVnd } from '@/src/lib/format';
-import { useMemo, useState } from 'react';
+import { MONTHS } from '@/src/lib/months';
+import { useState } from 'react';
 import { View } from 'react-native';
 
-const MONTH_OPTS = [{ value: 'all', label: 'Cả năm' }, ...MONTHS.slice(0, 10).map((_, i) => ({ value: String(i), label: `Tháng ${i + 1}/2026` }))];
+const THIS_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = [THIS_YEAR, THIS_YEAR - 1, THIS_YEAR - 2].map((y) => ({ value: String(y), label: `Năm ${y}` }));
+const MONTH_OPTIONS = [{ value: 'all', label: 'Cả năm' }, ...MONTHS.map((_, i) => ({ value: String(i + 1), label: `Tháng ${i + 1}` }))];
 
-/** Trang 3 – Chi phí: chi phí vật tư / lợi nhuận / giá bán theo BOM / mã hàng */
+/** Trang 3 – Chi phí: giá vốn / lợi nhuận / doanh thu theo khách + chi phí phát sinh theo tháng */
 export default function CostsScreen() {
+  const [year, setYear] = useState(String(THIS_YEAR));
   const [month, setMonth] = useState('all');
-  const [code, setCode] = useState('all');
+  const y = Number(year);
+  const m = month === 'all' ? undefined : Number(month);
 
-  const data = useMemo(() => costByMonth(code), [code]);
-  const shown = month === 'all' ? data : [data[Number(month)]];
-  const sum = shown.reduce(
-    (s, d) => ({ material: s.material + d.material, profit: s.profit + d.profit, sell: s.sell + d.sell }),
-    { material: 0, profit: 0, sell: 0 },
-  );
-  const margin = sum.sell ? Math.round((sum.profit / sum.sell) * 100) : 0;
+  const expenses = useMonthlyExpenses(y);
+  const profit = useCustomerGrossProfit(y, m);
+
+  const totals = first(profit.data?.totals);
+  const margin = totals?.margin ?? (totals?.revenue ? (totals.grossProfit / totals.revenue) * 100 : 0);
+  const customers = (profit.data?.rows ?? []).filter((r) => r.revenue > 0);
+
+  const refetch = () => {
+    expenses.refetch();
+    profit.refetch();
+  };
 
   return (
-    <Screen title="Chi phí" subtitle="Chi phí vật tư · Lợi nhuận · Giá bán">
+    <Screen title="Chi phí" subtitle="Chi phí · Lợi nhuận · Doanh thu" onRefresh={refetch} refreshing={profit.isRefetching || expenses.isRefetching}>
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Picker label="Lọc CP / Tháng" value={month} onChange={setMonth} options={MONTH_OPTS} />
-        <Picker
-          label="BOM / Mã hàng"
-          value={code}
-          onChange={setCode}
-          options={[{ value: 'all', label: 'Tất cả mã hàng' }, ...PRODUCTS.map((p) => ({ value: p.code, label: `${p.code} · ${p.bom}` }))]}
-        />
+        <Picker label="Năm" value={year} onChange={setYear} options={YEAR_OPTIONS} />
+        <Picker label="Lọc theo tháng" value={month} onChange={setMonth} options={MONTH_OPTIONS} />
       </View>
 
-      <Card>
-        <CardTitle>Cơ cấu giá bán</CardTitle>
-        <StackedRows
-          colors={[C.red, C.green]}
-          rows={shown.map((d) => ({ label: d.month, parts: [d.material, d.profit], total: d.sell }))}
-        />
-        <Legend
-          items={[
-            { label: 'Chi phí vật tư', color: C.red },
-            { label: 'Lợi nhuận', color: C.green },
-            { label: 'Giá bán = tổng 2 phần', color: C.line },
-          ]}
-        />
-      </Card>
+      <QueryState loading={profit.isLoading || expenses.isLoading} error={profit.error ?? expenses.error} onRetry={refetch} />
 
-      <Card>
-        <CardTitle>Tổng hợp {month === 'all' ? 'cả năm' : `tháng ${Number(month) + 1}`}</CardTitle>
-        <Row label="Chi phí vật tư" value={fmtVnd(sum.material)} />
-        <Row label="Lợi nhuận" value={fmtVnd(sum.profit)} />
-        <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
-        <Row label="Giá bán" value={fmtVnd(sum.sell)} bold />
-        <Row label="Biên lợi nhuận" value={`${margin}%`} bold />
-      </Card>
+      {profit.data ? (
+        <>
+          <Card>
+            <CardTitle>Cơ cấu doanh thu theo khách hàng</CardTitle>
+            {customers.length === 0 ? (
+              <Row label="Chưa có dữ liệu" value="—" />
+            ) : (
+              <StackedRows
+                colors={[C.red, C.green]}
+                rows={customers.slice(0, 10).map((r) => ({
+                  label: String(r.customerName ?? "").slice(0, 4),
+                  parts: [Math.max(0, r.cost), Math.max(0, r.grossProfit)],
+                  total: r.revenue,
+                }))}
+              />
+            )}
+            <Legend
+              items={[
+                { label: 'Giá vốn hàng bán', color: C.red },
+                { label: 'Lợi nhuận gộp', color: C.green },
+                { label: 'Doanh thu = tổng 2 phần', color: C.line },
+              ]}
+            />
+          </Card>
 
-      {code === 'all' ? (
-        <Card>
-          <CardTitle>Theo mã hàng (đơn vị)</CardTitle>
-          {PRODUCTS.map((p) => (
-            <View key={p.code} style={{ paddingVertical: 6 }}>
-              <Row label={`${p.code} · ${p.name}`} value={fmtShort(p.price)} />
-              <Row label="  Vật tư" value={fmtShort(p.materialCost)} />
-              <Row label="  Lợi nhuận" value={fmtShort(p.price - p.materialCost)} />
-            </View>
-          ))}
-        </Card>
+          <Card>
+            <CardTitle>Tổng hợp {month === 'all' ? `năm ${year}` : `tháng ${month}/${year}`}</CardTitle>
+            <Row label="Doanh thu" value={fmtVnd(totals?.revenue ?? 0)} bold />
+            <Row label="Giá vốn hàng bán" value={fmtVnd(totals?.cost ?? 0)} />
+            <Row label="Lợi nhuận gộp" value={fmtVnd(totals?.grossProfit ?? 0)} />
+            <Row label="Biên lợi nhuận" value={`${Math.round(margin)}%`} bold />
+          </Card>
+
+          {customers.length > 0 ? (
+            <Card>
+              <CardTitle>Chi tiết theo khách hàng</CardTitle>
+              {customers.map((r) => (
+                <View key={r.customerKey} style={{ paddingVertical: 6 }}>
+                  <Row label={r.customerName} value={fmtShort(r.revenue)} bold />
+                  <Row label="  Giá vốn" value={fmtShort(r.cost)} />
+                  <Row label="  Lợi nhuận" value={fmtShort(r.grossProfit)} />
+                </View>
+              ))}
+            </Card>
+          ) : null}
+        </>
+      ) : null}
+
+      {expenses.data ? (
+        <>
+          <Card>
+            <CardTitle>Chi phí phát sinh theo tháng – {year}</CardTitle>
+            <ColumnChart
+              height={130}
+              colors={[C.red, C.orange, C.gray]}
+              groups={(expenses.data.months ?? []).map((e) => ({ label: `T${e.month}`, values: [e.incurred, e.committed, e.pending] }))}
+            />
+            <Legend
+              items={[
+                { label: 'Đã phát sinh', color: C.red },
+                { label: 'Đã duyệt chưa nhận', color: C.orange },
+                { label: 'Chờ duyệt', color: C.gray },
+              ]}
+            />
+          </Card>
+
+          {(expenses.data.byCategory ?? []).length > 0 ? (
+            <Card>
+              <CardTitle>Chi phí theo loại</CardTitle>
+              <HBars rows={(expenses.data.byCategory ?? []).map((c) => ({ label: c.name, value: c.amount, color: C.primary }))} />
+            </Card>
+          ) : null}
+        </>
       ) : null}
     </Screen>
   );

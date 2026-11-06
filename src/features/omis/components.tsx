@@ -1,10 +1,13 @@
+import { getApiErrorMessage } from '@/src/lib/api-error';
 import { fmtShort } from '@/src/lib/format';
 import { useRouter } from 'expo-router';
 import { ChevronDown, Check, UserRound, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleProp,
   Text,
@@ -16,6 +19,18 @@ import {
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C } from './theme';
+
+/** Ép về số hữu hạn (BE có thể trả chuỗi/null/thiếu trường) */
+const num = (v: unknown): number => {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+};
+/** Tỉ lệ → chuỗi phần trăm hợp lệ 0–100% (không bao giờ NaN/Infinity) */
+const pct = (part: unknown, total: unknown): `${number}%` => {
+  const t = num(total);
+  const v = t > 0 ? (num(part) / t) * 100 : 0;
+  return `${Math.min(100, Math.max(0, v))}%`;
+};
 
 /* ------------------------------------------------------------------ */
 /* Basics                                                              */
@@ -148,12 +163,17 @@ export function Screen({
   right,
   children,
   scroll = true,
+  onRefresh,
+  refreshing = false,
 }: {
   title: string;
   subtitle?: string;
   right?: React.ReactNode;
   children: React.ReactNode;
   scroll?: boolean;
+  /** Kéo xuống để tải lại */
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -198,7 +218,11 @@ export function Screen({
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {header}
       {scroll ? (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 32 }}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} /> : undefined}
+        >
           {children}
         </ScrollView>
       ) : (
@@ -459,7 +483,7 @@ export function ColumnChart({
   onPressGroup?: (index: number) => void;
   format?: (n: number) => string;
 }) {
-  const max = Math.max(1, ...groups.flatMap((g) => g.values));
+  const max = Math.max(1, ...groups.flatMap((g) => g.values.map(num)));
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, minWidth: '100%' }}>
@@ -476,7 +500,7 @@ export function ColumnChart({
                   <View
                     style={{
                       width: groups.length <= 6 ? 26 : 10,
-                      height: Math.max(v > 0 ? 3 : 0, (v / max) * (height - 16)),
+                      height: Math.max(num(v) > 0 ? 3 : 0, (num(v) / max) * (height - 16)),
                       backgroundColor: colors[vi % colors.length],
                       borderTopLeftRadius: 5,
                       borderTopRightRadius: 5,
@@ -509,12 +533,12 @@ export function Donut({
   const stroke = 20;
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
-  const total = parts.reduce((s, p) => s + p.value, 0) || 1;
+  const total = parts.reduce((s, p) => s + num(p.value), 0) || 1;
   // độ dài & điểm bắt đầu của từng cung (tính trước, không gán lại biến khi render)
   const arcs = parts.map((p, i) => ({
     ...p,
-    len: (p.value / total) * circ,
-    start: (parts.slice(0, i).reduce((s, q) => s + q.value, 0) / total) * circ,
+    len: (num(p.value) / total) * circ,
+    start: (parts.slice(0, i).reduce((s, q) => s + num(q.value), 0) / total) * circ,
   }));
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
@@ -558,7 +582,7 @@ export function HBars({
   onPressRow?: (i: number) => void;
   activeIndex?: number;
 }) {
-  const max = Math.max(1, ...rows.map((r) => r.value));
+  const max = Math.max(1, ...rows.map((r) => num(r.value)));
   return (
     <View style={{ gap: 12 }}>
       {rows.map((r, i) => (
@@ -572,11 +596,11 @@ export function HBars({
               {r.label}
             </Txt>
             <Txt size={12} weight="700" color={C.sub}>
-              {format(r.value)}
+              {format(num(r.value))}
             </Txt>
           </View>
           <View style={{ height: 12, backgroundColor: C.line, borderRadius: 6, overflow: 'hidden' }}>
-            <View style={{ width: `${(r.value / max) * 100}%`, height: '100%', backgroundColor: r.color, borderRadius: 6 }} />
+            <View style={{ width: pct(r.value, max), height: '100%', backgroundColor: r.color, borderRadius: 6 }} />
           </View>
         </Pressable>
       ))}
@@ -584,7 +608,7 @@ export function HBars({
   );
 }
 
-/** Thanh xếp chồng 100%: vd chi phí vật tư + lợi nhuận = giá bán */
+/** Thanh xếp chồng 100%: vd giá vốn + lợi nhuận = doanh thu */
 export function StackedRows({
   rows,
   colors,
@@ -594,18 +618,18 @@ export function StackedRows({
 }) {
   return (
     <View style={{ gap: 9 }}>
-      {rows.map((r) => (
-        <View key={r.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      {rows.map((r, idx) => (
+        <View key={`${r.label}-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Txt size={11} color={C.sub} style={{ width: 28 }}>
-            {r.label}
+            {String(r.label ?? '')}
           </Txt>
           <View style={{ flex: 1, height: 18, flexDirection: 'row', borderRadius: 6, overflow: 'hidden', backgroundColor: C.line }}>
             {r.parts.map((p, i) => (
-              <View key={i} style={{ width: `${(p / r.total) * 100}%`, backgroundColor: colors[i] }} />
+              <View key={i} style={{ width: pct(p, r.total), backgroundColor: colors[i] }} />
             ))}
           </View>
           <Txt size={11} weight="700" style={{ width: 52 }} align="right">
-            {fmtShort(r.total)}
+            {fmtShort(num(r.total))}
           </Txt>
         </View>
       ))}
@@ -616,7 +640,7 @@ export function StackedRows({
 export function Progress({ value, color = C.primary }: { value: number; color?: string }) {
   return (
     <View style={{ height: 10, backgroundColor: C.line, borderRadius: 5, overflow: 'hidden' }}>
-      <View style={{ width: `${Math.min(100, Math.max(0, value * 100))}%`, height: '100%', backgroundColor: color, borderRadius: 5 }} />
+      <View style={{ width: pct(value, 1), height: '100%', backgroundColor: color, borderRadius: 5 }} />
     </View>
   );
 }
@@ -632,4 +656,38 @@ export function Row({ label, value, bold }: { label: string; value: string; bold
       </Txt>
     </View>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Trạng thái tải dữ liệu                                              */
+/* ------------------------------------------------------------------ */
+
+/** Hiện spinner khi đang tải lần đầu, hoặc khối lỗi + nút thử lại. Không có gì để hiện thì trả null. */
+export function QueryState({
+  loading,
+  error,
+  onRetry,
+}: {
+  loading?: boolean;
+  error?: unknown;
+  onRetry?: () => void;
+}) {
+  if (error) {
+    return (
+      <Card style={{ backgroundColor: C.redSoft, gap: 10 }}>
+        <Txt size={13} weight="600" color={C.red}>
+          {getApiErrorMessage(error)}
+        </Txt>
+        {onRetry ? <Btn tone="danger" label="Thử lại" onPress={onRetry} style={{ height: 40 }} /> : null}
+      </Card>
+    );
+  }
+  if (loading) {
+    return (
+      <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+        <ActivityIndicator color={C.primary} />
+      </View>
+    );
+  }
+  return null;
 }

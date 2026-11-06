@@ -14,7 +14,7 @@ module.exports = ({ config }) => {
       ? process.env.EXPO_PUBLIC_API_URL_PRODUCTION
       : APP_VARIANT === 'staging'
         ? process.env.EXPO_PUBLIC_API_URL_STAGING
-        : process.env.EXPO_PUBLIC_API_URL_DEV || 'http://localhost:3001';
+        : process.env.EXPO_PUBLIC_API_URL_DEV || 'http://localhost:8080';
 
   return {
     ...config,

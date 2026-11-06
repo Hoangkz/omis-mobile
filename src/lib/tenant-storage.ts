@@ -11,20 +11,18 @@ export const tenantStorage = {
 /**
  * Đọc tenantId từ nội dung mã QR. Chấp nhận:
  *  - Chuỗi thuần:            "acme-corp"
- *  - JSON:                   {"tenantId":"acme-corp","role":"admin"}
+ *  - JSON:                   {"tenantId":"acme-corp"}
  *  - URL / deep link:        omis://login?tenantId=acme-corp  (hoặc ?tenant=...)
  */
-export function parseTenantQr(raw: string): { tenantId: string; role?: 'admin' | 'sale' } | null {
+export function parseTenantQr(raw: string): { tenantId: string } | null {
   const text = raw.trim();
   if (!text) return null;
-
-  const pickRole = (r: unknown) => (r === 'admin' || r === 'sale' ? r : undefined);
 
   if (text.startsWith('{')) {
     try {
       const obj = JSON.parse(text) as Record<string, unknown>;
       const id = obj.tenantId ?? obj.tenant_id ?? obj.tenant;
-      if (typeof id === 'string' && id.trim()) return { tenantId: id.trim(), role: pickRole(obj.role) };
+      if (typeof id === 'string' && id.trim()) return { tenantId: id.trim() };
     } catch {
       return null;
     }
@@ -32,10 +30,7 @@ export function parseTenantQr(raw: string): { tenantId: string; role?: 'admin' |
   }
 
   const query = text.match(/[?&](?:tenantId|tenant_id|tenant)=([^&#]+)/i);
-  if (query) {
-    const role = text.match(/[?&]role=([^&#]+)/i)?.[1];
-    return { tenantId: decodeURIComponent(query[1]), role: pickRole(role) };
-  }
+  if (query) return { tenantId: decodeURIComponent(query[1]) };
 
   // Chuỗi thuần: chỉ nhận ký tự hợp lệ cho một id
   if (/^[\w.-]{2,64}$/.test(text)) return { tenantId: text };

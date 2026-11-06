@@ -1,87 +1,152 @@
-import { Card, CardTitle, ColumnChart, Donut, HBars, KpiTile, Legend, Picker, Screen, Sheet, Txt } from '@/src/features/omis/components';
-import { COMPANY_MONTHLY, CUSTOMERS, MONTHS, PRODUCTS, SALES } from '@/src/features/omis/mock-data';
-import { useOmisStore } from '@/src/features/omis/store';
+import {
+  Card,
+  CardTitle,
+  ColumnChart,
+  Donut,
+  HBars,
+  KpiTile,
+  Legend,
+  Picker,
+  QueryState,
+  Screen,
+  Sheet,
+  Txt,
+} from '@/src/features/omis/components';
+import {
+  first,
+  useDashboardCharts,
+  useDashboardRevenue,
+  useDashboardStats,
+  useOrders,
+  useProductOrderStatus,
+  useSalesRevenue,
+} from '@/src/features/omis/api';
 import { C, SALE_COLORS } from '@/src/features/omis/theme';
 import { fmtNum, fmtShort } from '@/src/lib/format';
+import { MONTHS } from '@/src/lib/months';
 import { useRouter } from 'expo-router';
 import { ChevronDown, ChevronUp, Package, ShoppingCart, Wrench } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-const YEAR_OPTIONS = [{ value: '2026', label: 'Năm 2026' }];
-const MONTH_OPTIONS = [{ value: 'all', label: 'Cả năm' }, ...MONTHS.map((m, i) => ({ value: String(i + 1), label: `Tháng ${i + 1}` }))];
+const THIS_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = [THIS_YEAR, THIS_YEAR - 1, THIS_YEAR - 2].map((y) => ({ value: String(y), label: `Năm ${y}` }));
+const MONTH_OPTIONS = [{ value: 'all', label: 'Cả năm' }, ...MONTHS.map((_, i) => ({ value: String(i + 1), label: `Tháng ${i + 1}` }))];
 
 /** Trang 3 – Báo cáo tổng quan (Admin) */
 export default function HomeScreen() {
   const router = useRouter();
-  const orders = useOmisStore((s) => s.orders);
-  const requests = useOmisStore((s) => s.requests);
+  const [year, setYear] = useState(String(THIS_YEAR));
   const [month, setMonth] = useState('all');
   const [expanded, setExpanded] = useState(false);
   const [detail, setDetail] = useState<null | 'month' | 'customer'>(null);
 
-  const filtered = useMemo(
-    () => (month === 'all' ? orders : orders.filter((o) => Number(o.date.slice(5, 7)) === Number(month))),
-    [orders, month],
-  );
+  const y = Number(year);
+  const m = month === 'all' ? undefined : Number(month);
 
-  const totals = useMemo(() => {
-    const price = (code: string) => PRODUCTS.find((p) => p.code === code)?.price ?? 0;
-    const qty = filtered.reduce((s, o) => s + o.qty, 0);
-    const delivered = filtered.reduce((s, o) => s + o.delivered, 0);
-    const revenue = filtered.reduce((s, o) => s + o.qty * price(o.productCode), 0);
-    const paid = filtered.reduce((s, o) => s + o.paid, 0);
-    return { qty, delivered, left: qty - delivered, revenue, paid, debt: revenue - paid };
-  }, [filtered]);
+  const stats = useDashboardStats();
+  const revenue = useDashboardRevenue(y);
+  const charts = useDashboardCharts();
+  const orderStatus = useProductOrderStatus(y, m);
+  const salesRevenue = useSalesRevenue(y);
+  const orders = useOrders();
 
-  const byMonth = useMemo(() => {
-    const map = new Map<string, number>();
-    filtered.forEach((o) => map.set(o.date.slice(0, 7), (map.get(o.date.slice(0, 7)) ?? 0) + 1));
-    return [...map.entries()].sort();
-  }, [filtered]);
-  const byCustomer = useMemo(() => {
-    const map = new Map<string, number>();
-    filtered.forEach((o) => map.set(o.customer, (map.get(o.customer) ?? 0) + 1));
-    return [...map.entries()].sort((a, b) => b[1] - a[1]);
-  }, [filtered]);
+  const refetchAll = () => {
+    stats.refetch();
+    revenue.refetch();
+    charts.refetch();
+    orderStatus.refetch();
+    salesRevenue.refetch();
+    orders.refetch();
+  };
+  const refreshing = stats.isRefetching || revenue.isRefetching || orders.isRefetching;
 
-  const pendingCount = requests.filter((r) => r.status === 'pending').length;
+  // Doanh thu theo tháng (bỏ dòng "Tổng") + tổng cả năm
+  const monthRows = useMemo(() => (revenue.data ?? []).filter((r) => typeof r.month === 'number'), [revenue.data]);
+  const totalRow = useMemo(() => (revenue.data ?? []).find((r) => r.month === 'Tổng'), [revenue.data]);
+  const sumRevenue = totalRow?.revenue ?? monthRows.reduce((s, r) => s + r.revenue, 0);
+  const sumPaid = totalRow?.paid ?? monthRows.reduce((s, r) => s + r.paid, 0);
+  const sumDebt = totalRow?.debt ?? monthRows.reduce((s, r) => s + r.debt, 0);
+  const paidPct = sumRevenue ? Math.round((sumPaid / sumRevenue) * 100) : 0;
+
+  const pr = first(charts.data?.prStatus);
   const statusCounts = [
-    { label: 'Chờ duyệt', value: requests.filter((r) => r.status === 'pending').length, color: C.orange },
-    { label: 'Đã duyệt', value: requests.filter((r) => r.status === 'approved').length, color: C.blue },
-    { label: 'Từ chối', value: requests.filter((r) => r.status === 'rejected').length, color: C.red },
-    { label: 'Đã mua', value: 2, color: C.teal },
-    { label: 'Hoàn thành', value: 5, color: C.green },
+    { label: 'Chờ duyệt', value: pr?.pending ?? 0 },
+    { label: 'Đã duyệt', value: pr?.approved ?? 0 },
+    { label: 'Từ chối', value: pr?.rejected ?? 0 },
+    { label: 'Đã mua', value: pr?.purchased ?? 0 },
+    { label: 'Hoàn thành', value: pr?.completed ?? 0 },
   ];
 
-  const saleTotals = SALES.map((s, i) => ({ label: s.name, value: s.monthly.reduce((a, b) => a + b, 0), color: SALE_COLORS[i] }));
-  const sumRevenue = COMPANY_MONTHLY.reduce((s, m) => s + m.revenue, 0);
-  const sumDebt = COMPANY_MONTHLY.reduce((s, m) => s + m.debt, 0);
-  const paidPct = Math.round(((sumRevenue - sumDebt) / sumRevenue) * 100);
+  // Đơn / tháng và đơn / khách hàng (từ danh sách đơn của năm/tháng đang chọn)
+  const filteredOrders = useMemo(
+    () =>
+      (orders.data ?? []).filter((o) => {
+        const d = new Date(o.orderDate);
+        return d.getFullYear() === y && (m === undefined || d.getMonth() + 1 === m);
+      }),
+    [orders.data, y, m],
+  );
+  const byMonth = useMemo(() => {
+    const map = new Map<number, number>();
+    filteredOrders.forEach((o) => {
+      const mm = new Date(o.orderDate).getMonth() + 1;
+      map.set(mm, (map.get(mm) ?? 0) + 1);
+    });
+    return [...map.entries()].sort((a, b) => a[0] - b[0]);
+  }, [filteredOrders]);
+  const byCustomer = useMemo(() => {
+    const map = new Map<string, number>();
+    filteredOrders.forEach((o) => {
+      const name = o.customerName || 'Khách lẻ';
+      map.set(name, (map.get(name) ?? 0) + 1);
+    });
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [filteredOrders]);
+
+  const totalQty = orderStatus.data?.totalOrderQty ?? 0;
+  const deliveredQty = orderStatus.data?.deliveredQty ?? 0;
+
+  const saleRows = (salesRevenue.data?.ranking ?? []).map((s, i) => ({
+    label: s.fullName || s.userName,
+    value: s.revenue,
+    color: SALE_COLORS[i % SALE_COLORS.length],
+  }));
+
+  const pending = pr?.pending ?? 0;
 
   return (
-    <Screen
-      title="Tổng quan"
-      subtitle="Omis – Trợ lý Ông chủ"
-    >
+    <Screen title="Tổng quan" subtitle="Omis – Trợ lý Ông chủ" onRefresh={refetchAll} refreshing={refreshing}>
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Picker label="Năm" value="2026" options={YEAR_OPTIONS} onChange={() => {}} />
+        <Picker label="Năm" value={year} options={YEAR_OPTIONS} onChange={setYear} />
         <Picker label="Tháng" value={month} options={MONTH_OPTIONS} onChange={setMonth} />
       </View>
 
+      <QueryState
+        loading={stats.isLoading}
+        error={stats.error ?? revenue.error ?? charts.error}
+        onRetry={refetchAll}
+      />
+
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <KpiTile label="Sản phẩm" value="13" icon={<Package size={16} color={C.primary} />} />
-        <KpiTile label="Linh kiện" value="213" icon={<Wrench size={16} color={C.teal} />} tint={C.teal} soft={C.greenSoft} />
-        <KpiTile label="Đơn hàng" value={String(filtered.length)} icon={<ShoppingCart size={16} color={C.orange} />} tint={C.orange} soft={C.orangeSoft} />
+        <KpiTile label="Sản phẩm" value={fmtNum(stats.data?.productCount ?? 0)} icon={<Package size={16} color={C.primary} />} />
+        <KpiTile label="Linh kiện" value={fmtNum(stats.data?.componentCount ?? 0)} icon={<Wrench size={16} color={C.teal} />} tint={C.teal} soft={C.greenSoft} />
+        <KpiTile label="Đơn hàng" value={fmtNum(stats.data?.orderCount ?? 0)} icon={<ShoppingCart size={16} color={C.orange} />} tint={C.orange} soft={C.orangeSoft} />
       </View>
 
       <Card>
-        <CardTitle>Doanh thu / Nợ – 2026</CardTitle>
-        <ColumnChart
-          height={140}
-          colors={[C.blue, C.green, C.red]}
-          groups={COMPANY_MONTHLY.slice(0, 10).map((m, i) => ({ label: MONTHS[i], values: [m.revenue, m.paid, m.debt] }))}
-        />
+        <CardTitle>Doanh thu / Nợ – {year}</CardTitle>
+        {monthRows.length === 0 ? (
+          <Txt size={13} color={C.sub}>
+            Chưa có dữ liệu doanh thu
+          </Txt>
+        ) : (
+          <ColumnChart
+            height={140}
+            colors={[C.blue, C.green, C.red]}
+            groups={monthRows.map((r) => ({ label: `T${r.month}`, values: [r.revenue, r.paid, r.debt] }))}
+          />
+        )}
         <Legend
           items={[
             { label: 'Tổng doanh thu', color: C.blue },
@@ -92,11 +157,11 @@ export default function HomeScreen() {
       </Card>
 
       <Card>
-        <CardTitle>Tổng năm 2026 – % Thanh toán / Nợ</CardTitle>
+        <CardTitle>Tổng năm {year} – % Thanh toán / Nợ</CardTitle>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' }}>
           <Donut
             parts={[
-              { value: sumRevenue - sumDebt, color: C.green },
+              { value: sumPaid, color: C.green },
               { value: sumDebt, color: C.red },
             ]}
             centerTop={`${paidPct}%`}
@@ -108,7 +173,7 @@ export default function HomeScreen() {
                 Đã thanh toán
               </Txt>
               <Txt size={18} weight="800" color={C.green}>
-                {fmtShort(sumRevenue - sumDebt)}
+                {fmtShort(sumPaid)}
               </Txt>
             </View>
             <View>
@@ -130,9 +195,9 @@ export default function HomeScreen() {
           colors={[C.blue, C.green, C.red]}
           format={fmtNum}
           groups={[
-            { label: 'Tổng đơn', values: [totals.qty] },
-            { label: 'Đã giao', values: [totals.delivered] },
-            { label: 'Còn lại', values: [totals.left] },
+            { label: 'Tổng đơn', values: [totalQty] },
+            { label: 'Đã giao', values: [deliveredQty] },
+            { label: 'Còn lại', values: [Math.max(0, totalQty - deliveredQty)] },
           ]}
           onPressGroup={() => setDetail('month')}
         />
@@ -144,10 +209,10 @@ export default function HomeScreen() {
       <Card>
         <CardTitle>Trạng thái yêu cầu đặt hàng</CardTitle>
         <ColumnChart height={110} colors={[C.blue]} format={fmtNum} groups={statusCounts.map((s) => ({ label: s.label, values: [s.value] }))} />
-        {pendingCount > 0 ? (
+        {pending > 0 ? (
           <Pressable onPress={() => router.push('/approvals')} style={{ marginTop: 10 }}>
             <Txt size={12} weight="700" color={C.primary}>
-              {pendingCount} yêu cầu đang chờ bạn duyệt →
+              {pending} yêu cầu đang chờ bạn duyệt →
             </Txt>
           </Pressable>
         ) : null}
@@ -165,7 +230,13 @@ export default function HomeScreen() {
         >
           Doanh thu từng Sale
         </CardTitle>
-        <HBars rows={saleTotals} />
+        {saleRows.length === 0 ? (
+          <Txt size={13} color={C.sub}>
+            Chưa có dữ liệu
+          </Txt>
+        ) : (
+          <HBars rows={saleRows} />
+        )}
       </Card>
 
       <Pressable onPress={() => setExpanded((v) => !v)}>
@@ -181,16 +252,22 @@ export default function HomeScreen() {
               <Txt size={12} weight="700" color={C.sub}>
                 TOP KHÁCH HÀNG THEO SỐ ĐƠN
               </Txt>
-              {byCustomer.slice(0, 5).map(([name, n]) => (
-                <View key={name} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Txt size={13}>{name}</Txt>
-                  <Txt size={13} weight="700">
-                    {n} đơn
-                  </Txt>
-                </View>
-              ))}
+              {byCustomer.length === 0 ? (
+                <Txt size={13} color={C.sub}>
+                  Chưa có đơn hàng
+                </Txt>
+              ) : (
+                byCustomer.slice(0, 5).map(([name, n]) => (
+                  <View key={name} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Txt size={13}>{name}</Txt>
+                    <Txt size={13} weight="700">
+                      {n} đơn
+                    </Txt>
+                  </View>
+                ))
+              )}
               <Txt size={11} color={C.sub} style={{ marginTop: 4 }}>
-                Tổng tiền: {fmtShort(totals.revenue)} · Đã thu: {fmtShort(totals.paid)} · Còn nợ: {fmtShort(totals.debt)}
+                Tổng nợ phải thu hiện tại: {fmtShort(stats.data?.totalDebt ?? 0)}
               </Txt>
             </View>
           ) : null}
@@ -211,15 +288,20 @@ export default function HomeScreen() {
             </Pressable>
           ))}
         </View>
-        <HBars
-          format={(n) => `${n} đơn`}
-          rows={
-            detail === 'month'
-              ? byMonth.map(([ym, n]) => ({ label: `Tháng ${Number(ym.slice(5))}/${ym.slice(0, 4)}`, value: n, color: C.blue }))
-              : byCustomer.map(([name, n]) => ({ label: name, value: n, color: C.teal }))
-          }
-        />
-        {CUSTOMERS.length === 0 ? null : <View style={{ height: 8 }} />}
+        {(detail === 'month' ? byMonth.length : byCustomer.length) === 0 ? (
+          <Txt size={13} color={C.sub}>
+            Không có đơn hàng trong kỳ này
+          </Txt>
+        ) : (
+          <HBars
+            format={(n) => `${n} đơn`}
+            rows={
+              detail === 'month'
+                ? byMonth.map(([mm, n]) => ({ label: `Tháng ${mm}/${year}`, value: n, color: C.blue }))
+                : byCustomer.map(([name, n]) => ({ label: name, value: n, color: C.teal }))
+            }
+          />
+        )}
       </Sheet>
     </Screen>
   );

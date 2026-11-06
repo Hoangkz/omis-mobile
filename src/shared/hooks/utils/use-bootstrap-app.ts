@@ -1,5 +1,4 @@
 import { useAuthStore } from '@/src/shared/store/use-auth-store';
-import { useTenantStore } from '@/src/shared/store/use-tenant-store';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
@@ -8,8 +7,6 @@ import { useEffect } from 'react';
 export const useBootstrapApp = () => {
   const hydrate = useAuthStore((s) => s.hydrate);
   const isAuthLoaded = useAuthStore((s) => s.isLoaded);
-  const hydrateTenant = useTenantStore((s) => s.hydrate);
-  const isTenantLoaded = useTenantStore((s) => s.isLoaded);
 
   const [fontsLoaded, fontError] = useFonts({
     'Outfit-Thin': require('../../../../assets/fonts/Outfit-Thin.ttf'),
@@ -24,11 +21,10 @@ export const useBootstrapApp = () => {
   });
 
   useEffect(() => {
-    hydrate();
-    hydrateTenant();
-  }, [hydrate, hydrateTenant]);
+    hydrate(); // đã gồm nạp tenantId
+  }, [hydrate]);
 
-  const isReady = (fontsLoaded || !!fontError) && isAuthLoaded && isTenantLoaded;
+  const isReady = (fontsLoaded || !!fontError) && isAuthLoaded;
 
   useEffect(() => {
     if (isReady) SplashScreen.hideAsync();

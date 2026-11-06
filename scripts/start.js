@@ -16,7 +16,7 @@ const env = { ...process.env };
 const DEFAULT_ENV = {
   APP_VARIANT: 'development', // development | staging | production
   APP_VERSION: '1.0.0',
-  EXPO_PUBLIC_API_URL_DEV: 'http://localhost:3001',
+  EXPO_PUBLIC_API_URL_DEV: 'http://localhost:8080',
   EXPO_PUBLIC_API_URL_STAGING: 'https://api-staging.example.com',
   EXPO_PUBLIC_API_URL_PRODUCTION: 'https://api.example.com',
   EXPO_NO_TELEMETRY: '1', // tắt hỏi/gửi telemetry của Expo khi chạy script
@@ -33,6 +33,8 @@ if (fs.existsSync(path.join(adbDir, 'adb.exe'))) {
   const adb = path.join(adbDir, 'adb.exe');
   spawnSync(adb, ['connect', DEVICE], { stdio: 'inherit' });
   spawnSync(adb, ['-s', DEVICE, 'reverse', 'tcp:8081', 'tcp:8081'], { stdio: 'inherit' });
+  // máy ảo gọi được BE chạy trên máy host (localhost:8080)
+  spawnSync(adb, ['-s', DEVICE, 'reverse', 'tcp:8080', 'tcp:8080'], { stdio: 'inherit' });
 }
 
 const args = ['expo', 'start', '--go', '--android', '--port', '8081', ...process.argv.slice(2)];

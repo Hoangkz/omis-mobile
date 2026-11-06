@@ -22,11 +22,11 @@ export default function SettingsScreen() {
             {user?.name}
           </Txt>
           <Txt size={12} color={C.sub}>
-            {user?.email}
+            {user?.email ?? user?.userName}
           </Txt>
         </View>
         <Row label="Vai trò" value={user?.role === 'admin' ? 'Admin (Boss)' : 'Sale'} />
-        <Row label="Phiên bản" value="1.0.0 (mock data)" />
+        <Row label="Phiên bản" value="1.0.0" />
       </Card>
       <Btn tone="danger" label="Đăng xuất" onPress={logout} disabled={isLoading} icon={<LogOut size={18} color="#fff" />} />
     </Screen>

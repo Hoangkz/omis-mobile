@@ -5,8 +5,10 @@ import { tokenStorage } from './secure-storage';
 import { useTenantStore } from '../shared/store/use-tenant-store';
 import { toast } from './toast';
 
+export const API_BASE_URL = `${Constants.expoConfig?.extra?.apiUrl}/api/v1`;
+
 const api = axios.create({
-  baseURL: `${Constants.expoConfig?.extra?.apiUrl}/api/v1`,
+  baseURL: API_BASE_URL,
   timeout: TIMEOUT,
   headers: { 'Content-Type': 'application/json' },
 });
@@ -43,16 +45,24 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   if (!tenantId) {
     return Promise.reject(new Error('Chưa có tenantId. Vui lòng quét mã QR để đăng nhập.'));
   }
-  config.headers['X-Tenant-Id'] = tenantId;
+  config.headers['x-tenant-id'] = tenantId;
   return config;
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // BE trả { message, status, data } → bóc lấy `data` cho code gọi API
+    const body = response.data;
+    if (body && typeof body === 'object' && 'status' in body && 'data' in body) {
+      response.data = body.data;
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
 
-    if (error.response?.status === 401 && original && !original._retry && refreshTokenHandler) {
+    const isAuthCall = /\/auth\/(login|refresh)/.test(original?.url ?? '');
+    if (error.response?.status === 401 && original && !original._retry && !isAuthCall && refreshTokenHandler) {
       original._retry = true;
 
       if (isRefreshing) {

@@ -1,29 +1,43 @@
-import { Badge, Btn, Card, Field, Picker, Row, Screen, Sheet, Txt } from '@/src/features/omis/components';
-import { CUSTOMERS, MONTHS, Order, PRODUCTS, SALES } from '@/src/features/omis/mock-data';
-import { useOmisStore } from '@/src/features/omis/store';
+import {
+  Order,
+  OrderStatus,
+  useCreateOrder,
+  useOrders,
+  useProducts,
+  useSalesOptions,
+} from '@/src/features/omis/api';
+import { Badge, Btn, Card, Field, Picker, QueryState, Row, Screen, Sheet, Txt } from '@/src/features/omis/components';
 import { C } from '@/src/features/omis/theme';
+import { getApiErrorMessage } from '@/src/lib/api-error';
 import { fmtNum, fmtVnd } from '@/src/lib/format';
+import { MONTHS } from '@/src/lib/months';
 import { useAuthStore } from '@/src/shared/store/use-auth-store';
 import { Plus, Search } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
-const productOf = (code: string) => PRODUCTS.find((p) => p.code === code)!;
-const saleName = (id: string) => SALES.find((s) => s.id === id)?.name ?? 'Ông chủ';
-const dmy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
-
-const STATUS: Record<Order['status'], { label: string; tone: 'orange' | 'blue' | 'green' }> = {
-  pending: { label: 'Chờ duyệt', tone: 'orange' },
-  approved: { label: 'Đang giao', tone: 'blue' },
-  delivered: { label: 'Hoàn thành', tone: 'green' },
+const dmy = (iso: string) => {
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
+
+const STATUS: Record<OrderStatus, { label: string; tone: 'orange' | 'blue' | 'green' }> = {
+  pending: { label: 'Chờ giao', tone: 'orange' },
+  processing: { label: 'Đang giao', tone: 'blue' },
+  completed: { label: 'Hoàn thành', tone: 'green' },
+};
+
+const sum = <T,>(list: T[], f: (x: T) => number) => list.reduce((s, x) => s + f(x), 0);
 
 /** Trang 2 – Quản lý đặt hàng + tạo đơn hàng (Admin & Sale) */
 export default function OrdersScreen() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'admin';
-  const orders = useOmisStore((s) => s.orders);
-  const addOrder = useOmisStore((s) => s.addOrder);
+
+  const ordersQuery = useOrders();
+  const productsQuery = useProducts();
+  const salesQuery = useSalesOptions(isAdmin);
+  const createOrder = useCreateOrder();
 
   const [q, setQ] = useState('');
   const [product, setProduct] = useState('all');
@@ -32,47 +46,84 @@ export default function OrdersScreen() {
   const [creating, setCreating] = useState(false);
 
   // form tạo đơn
-  const [fCustomer, setFCustomer] = useState(CUSTOMERS[0]);
-  const [fProduct, setFProduct] = useState(PRODUCTS[0].code);
-  const [fQty, setFQty] = useState('10');
+  const [fCustomer, setFCustomer] = useState('');
+  const [fProduct, setFProduct] = useState('');
+  const [fQty, setFQty] = useState('1');
+  const [fSale, setFSale] = useState('none');
+  const [formError, setFormError] = useState('');
+
+  const products = productsQuery.data ?? [];
+  const selectedProduct = products.find((p) => String(p.id) === fProduct);
 
   const visible = useMemo(() => {
     const kw = q.trim().toLowerCase();
-    return orders.filter((o) => {
-      if (!isAdmin && o.saleId !== user?.saleId) return false; // Sale chỉ thấy đơn của mình
-      if (isAdmin && sale !== 'all' && o.saleId !== sale) return false;
-      if (product !== 'all' && o.productCode !== product) return false;
-      if (month !== 'all' && Number(o.date.slice(5, 7)) !== Number(month)) return false;
-      if (kw && !(o.id.toLowerCase().includes(kw) || o.customer.toLowerCase().includes(kw))) return false;
+    return (ordersQuery.data ?? []).filter((o: Order) => {
+      if (!isAdmin && o.salespersonId !== user?.id) return false; // Sale chỉ thấy đơn của mình
+      if (isAdmin && sale !== 'all' && o.salespersonId !== sale) return false;
+      if (product !== 'all' && !o.orderItems.some((i) => String(i.productId) === product)) return false;
+      if (month !== 'all' && new Date(o.orderDate).getMonth() + 1 !== Number(month)) return false;
+      if (kw && !(o.orderCode.toLowerCase().includes(kw) || (o.customerName ?? '').toLowerCase().includes(kw))) return false;
       return true;
     });
-  }, [orders, q, product, month, sale, isAdmin, user?.saleId]);
+  }, [ordersQuery.data, q, product, month, sale, isAdmin, user?.id]);
 
-  const sum = useMemo(() => {
-    const qty = visible.reduce((s, o) => s + o.qty, 0);
-    const delivered = visible.reduce((s, o) => s + o.delivered, 0);
-    const total = visible.reduce((s, o) => s + o.qty * productOf(o.productCode).price, 0);
-    const paid = visible.reduce((s, o) => s + o.paid, 0);
-    return { qty, delivered, total, paid, debt: total - paid, built: Math.round(qty * 0.8) };
+  const totals = useMemo(() => {
+    const items = visible.flatMap((o) => o.orderItems);
+    return {
+      qty: sum(items, (i) => i.quantity),
+      delivered: sum(items, (i) => i.deliveredQuantity),
+      remaining: sum(items, (i) => i.remainingQuantity),
+      total: sum(visible, (o) => o.orderTotal ?? 0),
+      paid: sum(visible, (o) => o.totalPaid ?? 0),
+      debt: sum(visible, (o) => o.orderDebt ?? 0),
+      // BE ẩn số tiền với một số vai trò (trả null)
+      hasMoney: visible.length === 0 || visible.some((o) => o.orderTotal !== null),
+    };
   }, [visible]);
+  const money = (n: number) => (totals.hasMoney ? fmtVnd(n) : '—');
 
-  const submit = () => {
+  const openCreate = () => {
+    setFormError('');
+    setFCustomer('');
+    setFQty('1');
+    setFSale('none');
+    setFProduct(products[0] ? String(products[0].id) : '');
+    setCreating(true);
+  };
+
+  const submit = async () => {
     const qty = parseInt(fQty, 10);
-    if (!qty || qty <= 0) return;
-    addOrder({
-      date: new Date().toISOString().slice(0, 10),
-      customer: fCustomer,
-      productCode: fProduct,
-      qty,
-      saleId: user?.saleId ?? 'admin',
-    });
-    setCreating(false);
-    setFQty('10');
+    if (!selectedProduct) return setFormError('Vui lòng chọn sản phẩm');
+    if (!qty || qty <= 0) return setFormError('Số lượng phải lớn hơn 0');
+    setFormError('');
+    try {
+      await createOrder.mutateAsync({
+        customerName: fCustomer.trim() || undefined,
+        // Sale: BE tự gán cho chính mình; Admin: chọn nhân viên (không bắt buộc)
+        salespersonId: isAdmin ? (fSale === 'none' ? undefined : fSale) : user?.id,
+        items: [
+          {
+            productId: selectedProduct.id,
+            quantity: qty,
+            unitPrice: selectedProduct.unitPrice ?? 0,
+            vatRate: selectedProduct.vatRate ?? 0,
+          },
+        ],
+      });
+      setCreating(false);
+    } catch (e) {
+      setFormError(getApiErrorMessage(e));
+    }
   };
 
   return (
     <View style={{ flex: 1 }}>
-      <Screen title="Quản lý đặt hàng" subtitle={isAdmin ? 'Tất cả Sale' : `Đơn của ${user?.name}`}>
+      <Screen
+        title="Quản lý đặt hàng"
+        subtitle={isAdmin ? 'Tất cả Sale' : `Đơn của ${user?.name}`}
+        onRefresh={() => ordersQuery.refetch()}
+        refreshing={ordersQuery.isRefetching}
+      >
         <View style={{ gap: 10 }}>
           <View
             style={{
@@ -101,7 +152,7 @@ export default function OrdersScreen() {
               label="Sản phẩm"
               value={product}
               onChange={setProduct}
-              options={[{ value: 'all', label: 'Tất cả sản phẩm' }, ...PRODUCTS.map((p) => ({ value: p.code, label: p.name }))]}
+              options={[{ value: 'all', label: 'Tất cả sản phẩm' }, ...products.map((p) => ({ value: String(p.id), label: p.name }))]}
             />
             <Picker
               label="Ngày / Tháng"
@@ -116,64 +167,73 @@ export default function OrdersScreen() {
               label="Nhân viên kinh doanh"
               value={sale}
               onChange={setSale}
-              options={[{ value: 'all', label: 'Tất cả Sale' }, ...SALES.map((s) => ({ value: s.id, label: s.name }))]}
+              options={[
+                { value: 'all', label: 'Tất cả Sale' },
+                ...(salesQuery.data ?? []).map((s) => ({ value: s.id, label: s.fullName || s.userName })),
+              ]}
             />
           ) : null}
         </View>
 
-        <Card>
-          <Txt size={12} weight="700" color={C.sub} style={{ marginBottom: 4 }}>
-            TỔNG HỢP · Đơn vị (VNĐ)
-          </Txt>
-          <Row label="Tổng đơn" value={fmtNum(visible.length)} />
-          <Row label="Tổng số lượng" value={fmtNum(sum.qty)} />
-          <Row label="Tổng bán thành phẩm (đã lắp)" value={fmtNum(sum.built)} />
-          <Row label="Tổng đã giao" value={fmtNum(sum.delivered)} />
-          <Row label="Còn lại" value={fmtNum(sum.qty - sum.delivered)} />
-          <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
-          <Row label="Tổng tiền / đơn hàng" value={fmtVnd(sum.total)} bold />
-          <Row label="Tổng thu" value={fmtVnd(sum.paid)} />
-          <Row label="Tổng nợ" value={fmtVnd(sum.debt)} />
-        </Card>
+        <QueryState loading={ordersQuery.isLoading} error={ordersQuery.error} onRetry={() => ordersQuery.refetch()} />
 
-        {visible.length === 0 ? (
-          <Txt color={C.sub} align="center" style={{ paddingVertical: 24 }}>
-            Không có đơn hàng phù hợp
-          </Txt>
-        ) : (
-          visible.map((o) => {
-            const p = productOf(o.productCode);
-            const st = STATUS[o.status];
-            return (
-              <Card key={o.id} style={{ gap: 8 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Txt size={13} weight="800" color={C.primary}>
-                    {o.id}
-                  </Txt>
-                  <Badge label={st.label} tone={st.tone} />
-                </View>
-                <Txt size={15} weight="700">
-                  {o.customer}
-                </Txt>
-                <Txt size={12} color={C.sub}>
-                  {p.name} · SL {o.qty} × {fmtNum(p.price)} ₫
-                </Txt>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                  <Txt size={11} color={C.sub}>
-                    {dmy(o.date)} · {saleName(o.saleId)} · Giao {o.delivered}/{o.qty}
-                  </Txt>
-                  <Txt size={15} weight="800">
-                    {fmtVnd(o.qty * p.price)}
-                  </Txt>
-                </View>
-              </Card>
-            );
-          })
-        )}
+        {ordersQuery.data ? (
+          <>
+            <Card>
+              <Txt size={12} weight="700" color={C.sub} style={{ marginBottom: 4 }}>
+                TỔNG HỢP · Đơn vị (VNĐ)
+              </Txt>
+              <Row label="Tổng đơn" value={fmtNum(visible.length)} />
+              <Row label="Tổng số lượng" value={fmtNum(totals.qty)} />
+              <Row label="Tổng đã giao" value={fmtNum(totals.delivered)} />
+              <Row label="Còn lại" value={fmtNum(totals.remaining)} />
+              <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
+              <Row label="Tổng tiền / đơn hàng" value={money(totals.total)} bold />
+              <Row label="Tổng thu" value={money(totals.paid)} />
+              <Row label="Tổng nợ" value={money(totals.debt)} />
+            </Card>
+
+            {visible.length === 0 ? (
+              <Txt color={C.sub} align="center" style={{ paddingVertical: 24 }}>
+                Không có đơn hàng phù hợp
+              </Txt>
+            ) : (
+              visible.map((o) => {
+                const st = STATUS[o.status];
+                const qty = sum(o.orderItems, (i) => i.quantity);
+                const delivered = sum(o.orderItems, (i) => i.deliveredQuantity);
+                return (
+                  <Card key={o.id} style={{ gap: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Txt size={13} weight="800" color={C.primary}>
+                        {o.orderCode}
+                      </Txt>
+                      <Badge label={st.label} tone={st.tone} />
+                    </View>
+                    <Txt size={15} weight="700">
+                      {o.customerName || 'Khách lẻ'}
+                    </Txt>
+                    <Txt size={12} color={C.sub} numberOfLines={2}>
+                      {o.orderItems.map((i) => `${i.productName ?? 'Sản phẩm'} × ${i.quantity}`).join(' · ')}
+                    </Txt>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                      <Txt size={11} color={C.sub}>
+                        {dmy(o.orderDate)} · {o.salespersonName ?? 'Chưa gán Sale'} · Giao {delivered}/{qty}
+                      </Txt>
+                      <Txt size={15} weight="800">
+                        {o.orderTotal === null ? '—' : fmtVnd(o.orderTotal)}
+                      </Txt>
+                    </View>
+                  </Card>
+                );
+              })
+            )}
+          </>
+        ) : null}
       </Screen>
 
       <Pressable
-        onPress={() => setCreating(true)}
+        onPress={openCreate}
         style={{
           position: 'absolute',
           right: 18,
@@ -200,11 +260,34 @@ export default function OrdersScreen() {
 
       <Sheet visible={creating} onClose={() => setCreating(false)} title="Tạo đơn hàng">
         <View style={{ gap: 12, paddingTop: 8 }}>
-          <Picker full label="Khách hàng" value={fCustomer} onChange={setFCustomer} options={CUSTOMERS.map((c) => ({ value: c, label: c }))} />
-          <Picker full label="Sản phẩm" value={fProduct} onChange={setFProduct} options={PRODUCTS.map((p) => ({ value: p.code, label: `${p.name} – ${fmtNum(p.price)} ₫` }))} />
+          <Field label="Khách hàng" value={fCustomer} onChangeText={setFCustomer} placeholder="Tên khách hàng" />
+          <Picker
+            full
+            label="Sản phẩm"
+            value={fProduct}
+            onChange={setFProduct}
+            options={products.map((p) => ({ value: String(p.id), label: `${p.name}${p.unitPrice ? ` – ${fmtNum(p.unitPrice)} ₫` : ''}` }))}
+          />
           <Field label="Số lượng" value={fQty} onChangeText={setFQty} keyboardType="numeric" />
-          <Row label="Thành tiền" value={fmtVnd((parseInt(fQty, 10) || 0) * productOf(fProduct).price)} bold />
-          <Btn label="Tạo đơn" onPress={submit} />
+          {isAdmin ? (
+            <Picker
+              full
+              label="Nhân viên kinh doanh"
+              value={fSale}
+              onChange={setFSale}
+              options={[
+                { value: 'none', label: 'Chưa gán' },
+                ...(salesQuery.data ?? []).map((s) => ({ value: s.id, label: s.fullName || s.userName })),
+              ]}
+            />
+          ) : null}
+          <Row label="Thành tiền (chưa VAT)" value={fmtVnd((parseInt(fQty, 10) || 0) * (selectedProduct?.unitPrice ?? 0))} bold />
+          {formError ? (
+            <Txt size={12} color={C.red}>
+              {formError}
+            </Txt>
+          ) : null}
+          <Btn label={createOrder.isPending ? 'Đang tạo…' : 'Tạo đơn'} onPress={submit} disabled={createOrder.isPending} />
         </View>
       </Sheet>
     </View>
