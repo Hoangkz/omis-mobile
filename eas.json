@@ -1,23 +1,52 @@
 {
-  "cli": { "version": ">= 13.2.0", "appVersionSource": "remote" },
+  "cli": {
+    "version": ">= 13.2.0",
+    "appVersionSource": "remote"
+  },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "env": { "APP_VARIANT": "development", "NPM_CONFIG_LEGACY_PEER_DEPS": "true" }
+      "env": {
+        "APP_VARIANT": "development",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
+      }
     },
-    "staging": { "distribution": "internal", "env": { "APP_VARIANT": "staging" } },
+    "staging": {
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "staging"
+      }
+    },
     "production": {
       "distribution": "store",
       "channel": "production",
-      "ios": { "autoIncrement": true },
-      "env": { "APP_VARIANT": "production", "NPM_CONFIG_LEGACY_PEER_DEPS": "true", "EXPO_PUBLIC_API_URL_PRODUCTION": "https://api.humanscale.app", "APP_VERSION": "1.0.0" }
+      "ios": {
+        "autoIncrement": true
+      },
+      "env": {
+        "APP_VARIANT": "production",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_PUBLIC_API_URL_PRODUCTION": "https://api.humanscale.app",
+        "EXPO_PUBLIC_DEFAULT_TENANT_ID": "omis",
+        "APP_VERSION": "1.0.0"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "env": { "APP_VARIANT": "production", "NPM_CONFIG_LEGACY_PEER_DEPS": "true", "EXPO_PUBLIC_API_URL_PRODUCTION": "https://api.humanscale.app", "APP_VERSION": "1.0.0" }
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_VARIANT": "production",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_PUBLIC_API_URL_PRODUCTION": "https://api.humanscale.app",
+        "EXPO_PUBLIC_DEFAULT_TENANT_ID": "omis",
+        "APP_VERSION": "1.0.0"
+      }
     }
   },
-  "submit": { "production": {} }
+  "submit": {
+    "production": {}
+  }
 }
