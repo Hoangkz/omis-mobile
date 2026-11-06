@@ -1,7 +1,6 @@
 import { C } from '@/src/features/omis/theme';
 import { useAuthStore } from '@/src/shared/store/use-auth-store';
 import { Redirect, Tabs } from 'expo-router';
-import type { ColorValue } from 'react-native';
 import {
   Calculator,
   ChartColumn,
@@ -13,9 +12,11 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 
+// Không dùng `color` do tab bar truyền vào: trên iOS nó có thể là giá trị native (không phải chuỗi),
+// SVG sẽ báo "Invalid value provided…". Tự chọn màu theo trạng thái đang chọn.
 const icon = (Icon: LucideIcon) => {
-  const TabIcon = ({ color, focused }: { color: ColorValue; focused: boolean }) => (
-    <Icon size={24} color={color as string} strokeWidth={focused ? 2.4 : 1.8} />
+  const TabIcon = ({ focused }: { focused: boolean }) => (
+    <Icon size={24} color={focused ? C.primary : C.sub} strokeWidth={focused ? 2.4 : 1.8} />
   );
   return TabIcon;
 };
