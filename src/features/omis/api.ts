@@ -244,7 +244,12 @@ export const useUsers = (enabled = true) => {
 };
 
 export interface CreateOrderInput {
+  /** Bỏ trống = BE tự sinh DH-YYYYMMDD-NNN */
+  orderCode?: string;
   customerName?: string;
+  /** yyyy-mm-dd; bỏ trống = hôm nay */
+  orderDate?: string;
+  paymentDeadline?: string;
   salespersonId?: string;
   items: { productId: number; quantity: number; unitPrice: number; vatRate?: number }[];
 }

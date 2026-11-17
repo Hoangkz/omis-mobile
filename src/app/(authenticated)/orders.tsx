@@ -6,9 +6,9 @@ import {
   useProducts,
   useSalesOptions,
 } from '@/src/features/omis/api';
-import { Badge, Btn, Card, Field, Picker, QueryState, Row, Screen, Sheet, Txt } from '@/src/features/omis/components';
+import { Badge, Card, Picker, QueryState, Row, Screen, Txt } from '@/src/features/omis/components';
+import { CreateOrderModal } from '@/src/features/omis/create-order-modal';
 import { C } from '@/src/features/omis/theme';
-import { getApiErrorMessage } from '@/src/lib/api-error';
 import { fmtNum, fmtVnd } from '@/src/lib/format';
 import { MONTHS } from '@/src/lib/months';
 import { useAuthStore } from '@/src/shared/store/use-auth-store';
@@ -45,15 +45,16 @@ export default function OrdersScreen() {
   const [sale, setSale] = useState('all');
   const [creating, setCreating] = useState(false);
 
-  // form tạo đơn
-  const [fCustomer, setFCustomer] = useState('');
-  const [fProduct, setFProduct] = useState('');
-  const [fQty, setFQty] = useState('1');
-  const [fSale, setFSale] = useState('none');
-  const [formError, setFormError] = useState('');
-
   const products = productsQuery.data ?? [];
-  const selectedProduct = products.find((p) => String(p.id) === fProduct);
+
+  // BE không lưu giá bán trên sản phẩm (unitPrice = 0) → gợi ý theo giá của lần bán gần nhất (danh sách đã mới → cũ)
+  const lastPrices = useMemo(() => {
+    const m: Record<number, number> = {};
+    for (const o of ordersQuery.data ?? []) {
+      for (const i of o.orderItems) if (i.productId != null && i.unitPrice && m[i.productId] === undefined) m[i.productId] = i.unitPrice;
+    }
+    return m;
+  }, [ordersQuery.data]);
 
   const visible = useMemo(() => {
     const kw = q.trim().toLowerCase();
@@ -82,38 +83,13 @@ export default function OrdersScreen() {
   }, [visible]);
   const money = (n: number) => (totals.hasMoney ? fmtVnd(n) : '—');
 
-  const openCreate = () => {
-    setFormError('');
-    setFCustomer('');
-    setFQty('1');
-    setFSale('none');
-    setFProduct(products[0] ? String(products[0].id) : '');
-    setCreating(true);
-  };
-
-  const submit = async () => {
-    const qty = parseInt(fQty, 10);
-    if (!selectedProduct) return setFormError('Vui lòng chọn sản phẩm');
-    if (!qty || qty <= 0) return setFormError('Số lượng phải lớn hơn 0');
-    setFormError('');
-    try {
-      await createOrder.mutateAsync({
-        customerName: fCustomer.trim() || undefined,
-        // Sale: BE tự gán cho chính mình; Admin: chọn nhân viên (không bắt buộc)
-        salespersonId: isAdmin ? (fSale === 'none' ? undefined : fSale) : user?.id,
-        items: [
-          {
-            productId: selectedProduct.id,
-            quantity: qty,
-            unitPrice: selectedProduct.unitPrice ?? 0,
-            vatRate: selectedProduct.vatRate ?? 0,
-          },
-        ],
-      });
-      setCreating(false);
-    } catch (e) {
-      setFormError(getApiErrorMessage(e));
-    }
+  const submit = async (input: Parameters<typeof createOrder.mutateAsync>[0]) => {
+    await createOrder.mutateAsync({
+      ...input,
+      // Sale: BE tự gán cho chính mình; Admin: chọn nhân viên (không bắt buộc)
+      salespersonId: isAdmin ? input.salespersonId : user?.id,
+    });
+    setCreating(false);
   };
 
   return (
@@ -233,7 +209,7 @@ export default function OrdersScreen() {
       </Screen>
 
       <Pressable
-        onPress={openCreate}
+        onPress={() => setCreating(true)}
         style={{
           position: 'absolute',
           right: 18,
@@ -258,38 +234,16 @@ export default function OrdersScreen() {
         </Txt>
       </Pressable>
 
-      <Sheet visible={creating} onClose={() => setCreating(false)} title="Tạo đơn hàng">
-        <View style={{ gap: 12, paddingTop: 8 }}>
-          <Field label="Khách hàng" value={fCustomer} onChangeText={setFCustomer} placeholder="Tên khách hàng" />
-          <Picker
-            full
-            label="Sản phẩm"
-            value={fProduct}
-            onChange={setFProduct}
-            options={products.map((p) => ({ value: String(p.id), label: `${p.name}${p.unitPrice ? ` – ${fmtNum(p.unitPrice)} ₫` : ''}` }))}
-          />
-          <Field label="Số lượng" value={fQty} onChangeText={setFQty} keyboardType="numeric" />
-          {isAdmin ? (
-            <Picker
-              full
-              label="Nhân viên kinh doanh"
-              value={fSale}
-              onChange={setFSale}
-              options={[
-                { value: 'none', label: 'Chưa gán' },
-                ...(salesQuery.data ?? []).map((s) => ({ value: s.id, label: s.fullName || s.userName })),
-              ]}
-            />
-          ) : null}
-          <Row label="Thành tiền (chưa VAT)" value={fmtVnd((parseInt(fQty, 10) || 0) * (selectedProduct?.unitPrice ?? 0))} bold />
-          {formError ? (
-            <Txt size={12} color={C.red}>
-              {formError}
-            </Txt>
-          ) : null}
-          <Btn label={createOrder.isPending ? 'Đang tạo…' : 'Tạo đơn'} onPress={submit} disabled={createOrder.isPending} />
-        </View>
-      </Sheet>
+      <CreateOrderModal
+        visible={creating}
+        onClose={() => setCreating(false)}
+        products={products}
+        lastPrices={lastPrices}
+        isAdmin={isAdmin}
+        sales={salesQuery.data ?? []}
+        submitting={createOrder.isPending}
+        onSubmit={submit}
+      />
     </View>
   );
 }

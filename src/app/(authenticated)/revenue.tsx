@@ -4,7 +4,7 @@ import { C, SALE_COLORS } from '@/src/features/omis/theme';
 import { fmtShort } from '@/src/lib/format';
 import { Coins, TrendingUp } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 const THIS_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = [THIS_YEAR, THIS_YEAR - 1, THIS_YEAR - 2].map((y) => ({ value: String(y), label: `Năm ${y}` }));
@@ -100,29 +100,29 @@ export default function RevenueScreen() {
           </Txt>
         </View>
         {users.isLoading ? <QueryState loading /> : null}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View>
-            <TableRow cells={['STT', 'Họ và tên', 'Tài khoản', 'Doanh thu']} head />
-            {staff.map((s, i) => (
-              <TableRow
-                key={s.id}
-                zebra={i % 2 === 1}
-                cells={[String(i + 1), s.fullName || '—', s.userName, fmtShort(revenueById.get(s.id) ?? 0)]}
-              />
-            ))}
-          </View>
-        </ScrollView>
+        <View>
+          <TableRow cells={['STT', 'Họ và tên', 'Tài khoản', 'Doanh thu']} head />
+          {staff.map((s, i) => (
+            <TableRow
+              key={s.id}
+              zebra={i % 2 === 1}
+              cells={[String(i + 1), s.fullName || '—', s.userName, fmtShort(revenueById.get(s.id) ?? 0)]}
+            />
+          ))}
+        </View>
       </Card>
     </Screen>
   );
 }
 
-const W = [40, 170, 130, 100];
+// Cột co giãn theo chiều rộng màn hình (STT cố định, các cột còn lại chia theo tỉ lệ)
+const col = (grow: number) => ({ flexGrow: grow, flexShrink: 1, flexBasis: 0, minWidth: 0 }) as const;
+const W = [{ width: 32, flexGrow: 0, flexShrink: 0 }, col(4), col(3), col(2.5)] as const;
 function TableRow({ cells, head, zebra }: { cells: string[]; head?: boolean; zebra?: boolean }) {
   return (
-    <View style={{ flexDirection: 'row', backgroundColor: head ? C.primarySoft : zebra ? '#F8FAFE' : '#fff', paddingVertical: 9, paddingHorizontal: 8 }}>
+    <View style={{ flexDirection: 'row', alignSelf: 'stretch', backgroundColor: head ? C.primarySoft : zebra ? '#F8FAFE' : '#fff', paddingVertical: 9, paddingHorizontal: 8 }}>
       {cells.map((c, i) => (
-        <View key={i} style={{ width: W[i], paddingRight: 8 }}>
+        <View key={i} style={[W[i], { paddingRight: i === 3 ? 0 : 6 }]}>
           <Txt size={11} weight={head ? '800' : '400'} color={head ? C.primary : C.text} align={i === 3 ? 'right' : 'left'}>
             {c}
           </Txt>

@@ -21,7 +21,9 @@ export default function ApiProvider({ children }: { children: ReactNode }) {
         { refreshToken },
         { headers: { 'x-tenant-id': tenantId } },
       );
+      // BE trả lỗi cũng với HTTP 200 ({ status: 401, ... }) → không có accessToken thì coi như refresh thất bại
       const data = res.data?.data ?? res.data;
+      if (typeof data?.accessToken !== 'string') return null;
       await tokenStorage.setTokens(data.accessToken, data.refreshToken);
       return data.accessToken as string;
     });

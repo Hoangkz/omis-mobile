@@ -51,6 +51,42 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   return config;
 });
 
+const handleResponseError = async (error: AxiosError) => {
+  const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
+
+  const isAuthCall = /\/auth\/(login|refresh)/.test(original?.url ?? '');
+  if (error.response?.status === 401 && original && !original._retry && !isAuthCall && refreshTokenHandler) {
+    original._retry = true;
+
+    if (isRefreshing) {
+      return new Promise<string | null>((resolve, reject) => failedQueue.push({ resolve, reject })).then(
+        (token) => {
+          original.headers.Authorization = `Bearer ${token}`;
+          return api(original);
+        },
+      );
+    }
+
+    isRefreshing = true;
+    try {
+      const newToken = await refreshTokenHandler();
+      if (!newToken) throw new Error('Failed to refresh token');
+      original.headers.Authorization = `Bearer ${newToken}`;
+      processQueue(null, newToken);
+      return await api(original);
+    } catch (refreshError) {
+      processQueue(refreshError, null);
+      toast.error('errors.sessionExpired', true);
+      await onUnauthorized?.();
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
+  }
+
+  return Promise.reject(error);
+};
+
 api.interceptors.response.use(
   (response) => {
     // BE trả { message, status, data } → bóc lấy `data` cho code gọi API
@@ -59,7 +95,8 @@ api.interceptors.response.use(
     // Chuyển thành lỗi thật (response.status = body.status) để mọi chỗ xử lý lỗi/401-refresh phía dưới chạy đúng.
     if (body && typeof body === 'object' && typeof body.status === 'number' && body.status !== 200) {
       response.status = body.status;
-      return Promise.reject(
+      // Lỗi ném từ handler thành công KHÔNG rơi vào handler lỗi cùng interceptor → gọi thẳng để chạy refresh/đăng xuất
+      return handleResponseError(
         new AxiosError(
           typeof body.message === 'string' ? body.message : 'Request failed',
           AxiosError.ERR_BAD_RESPONSE,
@@ -75,41 +112,7 @@ api.interceptors.response.use(
     }
     return response;
   },
-  async (error: AxiosError) => {
-    const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
-
-    const isAuthCall = /\/auth\/(login|refresh)/.test(original?.url ?? '');
-    if (error.response?.status === 401 && original && !original._retry && !isAuthCall && refreshTokenHandler) {
-      original._retry = true;
-
-      if (isRefreshing) {
-        return new Promise<string | null>((resolve, reject) => failedQueue.push({ resolve, reject })).then(
-          (token) => {
-            original.headers.Authorization = `Bearer ${token}`;
-            return api(original);
-          },
-        );
-      }
-
-      isRefreshing = true;
-      try {
-        const newToken = await refreshTokenHandler();
-        if (!newToken) throw new Error('Failed to refresh token');
-        original.headers.Authorization = `Bearer ${newToken}`;
-        processQueue(null, newToken);
-        return await api(original);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
-        toast.error('errors.sessionExpired', true);
-        await onUnauthorized?.();
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
-    }
-
-    return Promise.reject(error);
-  },
+  (error: AxiosError) => handleResponseError(error),
 );
 
 export default api;
