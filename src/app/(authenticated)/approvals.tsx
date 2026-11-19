@@ -32,15 +32,72 @@ const ENTITY: Record<string, string> = {
   component: 'Linh kiện',
   product: 'Sản phẩm',
   bom_item: 'Dòng BOM',
+  expense: 'Chi phí',
 };
+
+// Nhãn tiếng Việt cho field trong payload/before – đồng bộ với omis-fe (change-request-labels.ts)
+const FIELD_LABELS: Record<string, string> = {
+  orderCode: 'Mã đơn',
+  customerName: 'Khách hàng',
+  customerPhone: 'Điện thoại',
+  customerEmail: 'Email',
+  customerAddress: 'Địa chỉ',
+  orderDate: 'Ngày đặt',
+  paymentDeadline: 'Ngày trả',
+  salespersonId: 'Người bán',
+  quantity: 'Số lượng',
+  unitPrice: 'Đơn giá',
+  vatRate: 'VAT',
+  note: 'Ghi chú',
+  notes: 'Ghi chú',
+  specification: 'Quy cách',
+  material: 'Vật liệu',
+  status: 'Tình trạng',
+  unit: 'Đơn vị',
+  color: 'Màu',
+  supplier: 'Nhà cung cấp',
+  leadTimeDays: 'Số ngày về',
+  category: 'Nhóm',
+  otherCost: 'Chi phí khác',
+  pic: 'PIC',
+  picPerson: 'PIC',
+  contract: 'Hợp đồng',
+  contractNo: 'Hợp đồng',
+  paymentStatus: 'Thanh toán',
+  requiredDate: 'Ngày LK cần về',
+  productCode: 'Mã thành phẩm',
+  componentCode: 'Mã linh kiện',
+  componentName: 'Tên linh kiện',
+  identifyingFeatures: 'Ảnh',
+  itemName: 'Hạng mục chi',
+  expenseType: 'Loại chi',
+  costNature: 'Loại phí',
+  expenseDate: 'Ngày tháng',
+  minStock: 'Tồn tối thiểu',
+  location: 'Vị trí',
+  name: 'Tên',
+  code: 'Mã',
+};
+const fieldLabel = (k: string) => FIELD_LABELS[k] ?? k;
 
 const dmy = (iso: string | null) => {
   if (!iso) return '—';
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
-const lineTotal = (q: number, price: number | null, vat: number | null) => Math.round(q * (price ?? 0) * (1 + (vat ?? 0) / 100));
-const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+// VAT lưu dạng phân số (0.08 = 8%); giá trị > 1 coi như đã là % – giống vatPercent ở omis-fe (prUtils.ts)
+const vatPercent = (v: number | null | undefined) => {
+  const n = Number(v) || 0;
+  return n > 1 ? n : Math.round(n * 10000) / 100;
+};
+const lineTotal = (q: number, price: number | null, vat: number | null) => Math.round(q * (price ?? 0) * (1 + vatPercent(vat) / 100));
+// Hiển thị giá trị field giống displayValue ở omis-fe (change-request-labels.ts)
+const show = (key: string, v: unknown) => {
+  if (v === null || v === undefined || v === '') return '—';
+  if (key === 'vatRate') return `${Math.round(Number(v) * 100)}%`;
+  if (key === 'unitPrice') return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(Number(v));
+  return typeof v === 'object' ? JSON.stringify(v) : String(v);
+};
 
 /** Trang 3 – Phê duyệt: yêu cầu mua hàng và đề xuất sửa */
 export default function ApprovalsScreen() {
@@ -251,7 +308,7 @@ function PurchaseDetail({ pr, onClose }: { pr: PurchaseRequest; onClose: () => v
                   l.supplier || pr.supplier || '—',
                   fmtNum(l.quantity),
                   fmtNum(l.unitPrice ?? 0),
-                  `${l.vatRate ?? 0}%`,
+                  l.vatRate == null ? '-' : `${vatPercent(l.vatRate)}%`,
                   fmtNum(lineTotal(l.quantity, l.unitPrice, l.vatRate)),
                 ]}
               />
@@ -350,13 +407,13 @@ function ChangeDetail({ cr, onClose }: { cr: ChangeRequest; onClose: () => void 
           changes.map((c) => (
             <View key={c.key} style={{ gap: 2 }}>
               <Txt size={11} weight="700" color={C.sub}>
-                {c.key}
+                {fieldLabel(c.key)}
               </Txt>
               <Txt size={13} color={C.red}>
-                {show(c.before)}
+                {show(c.key, c.before)}
               </Txt>
               <Txt size={13} weight="700" color={C.green}>
-                → {show(c.after)}
+                → {show(c.key, c.after)}
               </Txt>
             </View>
           ))

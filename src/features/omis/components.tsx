@@ -16,6 +16,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C } from './theme';
@@ -218,13 +219,15 @@ export function Screen({
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {header}
       {scroll ? (
-        <ScrollView
+        // Cuộn ô đang nhập lên trên bàn phím (VD: lý do từ chối ở màn Phê duyệt)
+        <KeyboardAwareScrollView
           contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 32 }}
           keyboardShouldPersistTaps="handled"
+          bottomOffset={24}
           refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} /> : undefined}
         >
           {children}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       ) : (
         <View style={{ flex: 1 }}>{children}</View>
       )}
